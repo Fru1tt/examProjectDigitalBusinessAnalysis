@@ -80,12 +80,10 @@ def model_registry() -> dict[str, object]:
         "dummy_most_frequent": DummyClassifier(strategy="most_frequent"),
         "logistic_regression": LogisticRegression(
             max_iter=2_000,
-            multi_class="multinomial",
             class_weight="balanced",
         ),
         "logistic_regression_hybrid_tuned": LogisticRegression(
             max_iter=2_000,
-            multi_class="multinomial",
             class_weight="balanced",
         ),
         "random_forest": RandomForestClassifier(

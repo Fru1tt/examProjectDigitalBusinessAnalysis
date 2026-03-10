@@ -43,6 +43,7 @@ The format is based on Keep a Changelog and semantic-style sections.
   - color-coded category prediction view
   - tuned hybrid-threshold decision logic
   - professional executive-style layout and KPI panels
+  - adaptive recommendation layer that separates channel preference from digital susceptibility
 - Added simple-language report draft for findings and interpretation:
   - `docs/05_results_discussion_draft.md`
 - Added generated processed outputs:

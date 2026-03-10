@@ -77,6 +77,12 @@ The current model can be used as a first decision-support tool. It gives a data-
 
 In short, the model helps managers make more structured decisions instead of relying only on intuition.
 
+An important interpretation point is that `preference` and `susceptibility` are not the same thing.
+
+- A customer can still be predicted as `store`, while also showing high digital susceptibility.
+- This means digital channels can still be effective for that customer, even if final purchase is likely to happen in-store.
+- In practice, this supports a "store-first, digitally activated" strategy for many customers.
+
 ### 5.2 Why this method was chosen
 
 The research question is a prediction problem with three possible outcomes. Classification models are therefore a natural choice.
@@ -98,9 +104,11 @@ This approach is both practical and academically defensible for a first project 
 
 ### 5.4 Recommended next steps
 
-1. Improve `hybrid` prediction with class-balancing and threshold tuning.
+1. Use a two-layer recommendation logic in decision-making:
+   - Layer 1: predicted preferred channel (`store`, `online`, `hybrid`).
+   - Layer 2: digital susceptibility (based on probability mix and digital behavior variables).
 2. Add segment-focused analysis (for example age groups, city tiers, spending patterns).
-3. Build a simple dashboard that translates predictions into business actions.
+3. Validate the approach with real retailer data before operational rollout.
 
 ## Short Version for a Non-Technical Audience
 

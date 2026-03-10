@@ -237,7 +237,6 @@ def train_prediction_pipeline(df: pd.DataFrame) -> Pipeline:
                 "model",
                 LogisticRegression(
                     max_iter=2_000,
-                    multi_class="multinomial",
                     class_weight="balanced",
                 ),
             ),
@@ -296,21 +295,102 @@ def format_category(value: str) -> str:
     return value.replace("_", " ").title()
 
 
-def recommendation_text(category: str) -> str:
-    if category == "online":
-        return (
-            "Prioritize digital channels: paid social, search ads, app promotion, "
-            "and conversion-focused landing pages."
-        )
-    if category == "store":
-        return (
-            "Prioritize in-store investment: local campaigns, store experience, "
-            "inventory availability, and in-person promotions."
-        )
-    return (
-        "Prioritize omni-channel strategy: consistent pricing/promotions across channels, "
-        "click-and-collect, and cross-channel loyalty activation."
+def digital_susceptibility_index(row: dict[str, object]) -> float:
+    score = (
+        0.18 * ((float(row["daily_internet_hours"]) - 1.0) / 11.0)
+        + 0.12 * (float(row["social_media_hours"]) / 6.0)
+        + 0.17 * (float(row["tech_savvy_score"]) / 10.0)
+        + 0.13 * (float(row["online_payment_trust_score"]) / 10.0)
+        + 0.20 * float(row["online_order_share"])
+        + 0.20 * float(row["online_spend_share"])
     )
+    return float(np.clip(score, 0.0, 1.0) * 100.0)
+
+
+def channel_flexibility_index(probability_map: dict[str, float]) -> float:
+    probs = np.array(
+        [
+            probability_map.get("online", 0.0),
+            probability_map.get("store", 0.0),
+            probability_map.get("hybrid", 0.0),
+        ],
+        dtype=float,
+    )
+    probs = np.clip(probs, 1e-12, 1.0)
+    probs = probs / probs.sum()
+    entropy = -np.sum(probs * np.log(probs)) / np.log(3.0)
+    return float(np.clip(entropy, 0.0, 1.0) * 100.0)
+
+
+def build_adaptive_strategy(
+    *,
+    predicted: str,
+    probability_map: dict[str, float],
+    row: dict[str, object],
+) -> dict[str, object]:
+    digital_index = digital_susceptibility_index(row)
+    flexibility_index = channel_flexibility_index(probability_map)
+
+    if predicted == "store":
+        if probability_map["online"] >= 0.22 or digital_index >= 60:
+            strategy = "Store-First, Digitally Activated"
+            action = (
+                "Keep in-store as the main channel, but use digital ads to drive footfall "
+                "(location-based ads, click-to-store, local inventory highlights)."
+            )
+        elif probability_map["hybrid"] >= 0.20 or flexibility_index >= 55:
+            strategy = "Store-First with Omni Bridge"
+            action = (
+                "Keep store priority, but build cross-channel support (reserve online, pickup in store, "
+                "consistent offers across channels)."
+            )
+        else:
+            strategy = "Store-Centric"
+            action = (
+                "Focus budget on in-store promotions, product experience, and local retail conversion."
+            )
+    elif predicted == "online":
+        if probability_map["store"] >= 0.24 and flexibility_index >= 50:
+            strategy = "Online-First with Store Backup"
+            action = (
+                "Run digital-first campaigns, while supporting conversion with nearest-store options "
+                "and pickup/return convenience."
+            )
+        else:
+            strategy = "Online-Centric"
+            action = (
+                "Prioritize digital channels: paid social/search, app retention, and checkout optimization."
+            )
+    else:
+        strategy = "Omni-Channel Priority"
+        action = (
+            "Coordinate online and store channels: unified promotions, cross-channel loyalty, "
+            "and seamless switch between browsing and buying."
+        )
+
+    return {
+        "strategy": strategy,
+        "action": action,
+        "digital_index": round(digital_index, 1),
+        "flexibility_index": round(flexibility_index, 1),
+    }
+
+
+def behavior_signals(row: dict[str, object], probability_map: dict[str, float]) -> list[str]:
+    signals: list[str] = []
+    if float(row["daily_internet_hours"]) >= 8 or float(row["social_media_hours"]) >= 4:
+        signals.append("High daily digital exposure suggests stronger online ad reach.")
+    if float(row["online_order_share"]) >= 0.65 or float(row["online_spend_share"]) >= 0.6:
+        signals.append("Online purchase pattern indicates responsiveness to digital campaigns.")
+    if float(row["need_touch_feel_score"]) >= 7:
+        signals.append("Strong touch-and-feel need supports physical store conversion tactics.")
+    if float(row["online_payment_trust_score"]) >= 7 and float(row["tech_savvy_score"]) >= 7:
+        signals.append("High trust and tech comfort support online and hybrid adoption.")
+    if probability_map["hybrid"] >= 0.2:
+        signals.append("Non-trivial hybrid probability supports omni-channel experimentation.")
+    if not signals:
+        signals.append("No single dominant behavioral driver detected; use balanced testing.")
+    return signals[:4]
 
 
 def render_metric_card(title: str, value: str, note: str, color: str) -> None:
@@ -531,7 +611,7 @@ def predict_customer(
     pipeline: Pipeline,
     profile: dict[str, object],
     threshold: float,
-) -> tuple[str, dict[str, float], float]:
+) -> tuple[str, dict[str, float], float, dict[str, object], str, float]:
     row = engineer_features(profile.copy())
     ordered_cols = BASE_INPUT_FEATURES + ENGINEERED_FEATURES
     input_df = pd.DataFrame([row])[ordered_cols]
@@ -551,7 +631,9 @@ def predict_customer(
         predicted = "online" if probability_map["online"] >= probability_map["store"] else "store"
 
     confidence = probability_map[predicted]
-    return predicted, probability_map, confidence
+    ranked = sorted(probability_map.items(), key=lambda x: x[1], reverse=True)
+    secondary_channel, secondary_probability = ranked[1]
+    return predicted, probability_map, confidence, row, secondary_channel, secondary_probability
 
 
 def main() -> None:
@@ -582,13 +664,19 @@ def main() -> None:
     render_legend()
 
     profile = build_profile_input(df)
-    predicted, probability_map, confidence = predict_customer(
+    predicted, probability_map, confidence, engineered_row, secondary_channel, secondary_probability = predict_customer(
         pipeline=pipeline,
         profile=profile,
         threshold=threshold,
     )
+    adaptive = build_adaptive_strategy(
+        predicted=predicted,
+        probability_map=probability_map,
+        row=engineered_row,
+    )
+    signals = behavior_signals(engineered_row, probability_map)
 
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
         render_metric_card(
             "Predicted Preference",
@@ -605,9 +693,16 @@ def main() -> None:
         )
     with col_c:
         render_metric_card(
-            "Hybrid Threshold",
-            f"{threshold:.2f}",
-            "Applied for minority-class tuning",
+            "Secondary Channel",
+            format_category(secondary_channel),
+            f"Secondary likelihood: {secondary_probability:.1%}",
+            CATEGORY_COLORS[secondary_channel],
+        )
+    with col_d:
+        render_metric_card(
+            "Digital Susceptibility",
+            f"{adaptive['digital_index']:.1f}/100",
+            f"Channel flexibility: {adaptive['flexibility_index']:.1f}/100",
             "#0f172a",
         )
 
@@ -642,48 +737,54 @@ def main() -> None:
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with right:
-        st.markdown("<div class='section-title'>Recommended Action</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Adaptive Recommendation</div>", unsafe_allow_html=True)
         st.markdown(
             f"""
             <div class="rec-card" style="border-left: 6px solid {CATEGORY_COLORS[predicted]};">
-              <strong>Focus: {format_category(predicted)}</strong><br><br>
-              {recommendation_text(predicted)}
+              <strong>Strategy Mode: {adaptive['strategy']}</strong><br><br>
+              {adaptive['action']}
             </div>
             """,
             unsafe_allow_html=True,
         )
         st.markdown("")
-        st.markdown("**Input Snapshot**")
-        st.dataframe(
-            pd.DataFrame(
-                {
-                    "Feature": ["Age", "Monthly Income", "Gender", "City Tier"],
-                    "Value": [
-                        profile["age"],
-                        profile["monthly_income"],
-                        profile["gender"],
-                        profile["city_tier"],
-                    ],
-                }
-            ),
-            use_container_width=True,
-            hide_index=True,
+        st.markdown("**Behavior Signals Used**")
+        for signal in signals:
+            st.markdown(f"- {signal}")
+
+        st.markdown("")
+        st.caption(
+            f"Hybrid threshold in model decision rule: {threshold:.2f}. "
+            "Prediction label remains model-driven; strategy layer adapts tactics."
         )
+        st.markdown("**Input Snapshot**")
+        snapshot_df = pd.DataFrame(
+            {
+                "Feature": ["Age", "Monthly Income", "Gender", "City Tier"],
+                "Value": [
+                    str(profile["age"]),
+                    str(profile["monthly_income"]),
+                    str(profile["gender"]),
+                    str(profile["city_tier"]),
+                ],
+            }
+        )
+        st.dataframe(snapshot_df, width="stretch", hide_index=True)
 
     st.markdown("<div class='section-title'>Model Benchmark</div>", unsafe_allow_html=True)
     if not metrics_df.empty:
         benchmark = metrics_df.copy()
         benchmark["model"] = benchmark["model"].str.replace("_", " ").str.title()
-        st.dataframe(benchmark, use_container_width=True, hide_index=True)
+        st.dataframe(benchmark, width="stretch", hide_index=True)
     else:
         st.info("Run scripts/analyze.py to populate benchmark metrics.")
 
     st.markdown("<div class='section-title'>Top Global Drivers</div>", unsafe_allow_html=True)
     if not top_drivers_df.empty:
-        st.dataframe(top_drivers_df.head(12), use_container_width=True, hide_index=True)
+        st.dataframe(top_drivers_df.head(12), width="stretch", hide_index=True)
     else:
         st.info("Run scripts/make_outputs.py to populate top driver exports.")
 
