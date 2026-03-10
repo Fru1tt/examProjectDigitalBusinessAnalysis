@@ -166,6 +166,26 @@ def inject_styles() -> None:
             margin-bottom: 8px;
             font-size: 1.12rem;
         }
+        .signal-title,
+        .snapshot-title {
+            color: #1d4ed8 !important;
+            font-weight: 800;
+            margin: 0 0 6px 0;
+        }
+        .signal-item {
+            color: #1e3a8a !important;
+            font-weight: 600;
+            margin: 0 0 2px 0;
+        }
+        .threshold-note {
+            color: #0f766e !important;
+            font-weight: 600;
+            margin: 6px 0 10px 0;
+        }
+        .final-note {
+            color: #1e40af !important;
+            font-weight: 600;
+        }
         div[data-testid="stExpander"] {
             border: 1px solid #bfdbfe;
             border-radius: 12px;
@@ -829,16 +849,19 @@ def main() -> None:
             unsafe_allow_html=True,
         )
         st.markdown("")
-        st.markdown("**Behavior Signals Used**")
+        st.markdown('<p class="signal-title">Behavior Signals Used</p>', unsafe_allow_html=True)
         for signal in signals:
-            st.markdown(f"- {signal}")
+            st.markdown(f'<p class="signal-item">- {signal}</p>', unsafe_allow_html=True)
 
         st.markdown("")
-        st.caption(
-            f"Hybrid threshold in model decision rule: {threshold:.2f}. "
-            "Prediction label remains model-driven; strategy layer adapts tactics."
+        st.markdown(
+            (
+                f'<p class="threshold-note">Hybrid threshold in model decision rule: {threshold:.2f}. '
+                "Prediction label remains model-driven; strategy layer adapts tactics.</p>"
+            ),
+            unsafe_allow_html=True,
         )
-        st.markdown("**Input Snapshot**")
+        st.markdown('<p class="snapshot-title">Input Snapshot</p>', unsafe_allow_html=True)
         snapshot_df = pd.DataFrame(
             {
                 "Feature": ["Age", "Monthly Income", "Gender", "City Tier"],
@@ -1037,8 +1060,9 @@ def main() -> None:
     else:
         st.info("Run scripts/make_outputs.py to populate top driver exports.")
 
-    st.caption(
-        "Note: predictions are decision-support signals and should be combined with business context."
+    st.markdown(
+        '<p class="final-note">Note: predictions are decision-support signals and should be combined with business context.</p>',
+        unsafe_allow_html=True,
     )
 
 
