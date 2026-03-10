@@ -31,6 +31,11 @@ The format is based on Keep a Changelog and semantic-style sections.
   - confusion matrices (CSV + PNG)
   - best-model prediction exports
   - best-model feature-importance export
+- Added executive output pipeline in `scripts/make_outputs.py` with:
+  - business KPI summary table
+  - model comparison and channel mix charts
+  - segment recommendation table
+  - top-driver chart and export manifest
 - Added simple-language report draft for findings and interpretation:
   - `docs/05_results_discussion_draft.md`
 - Added generated processed outputs:

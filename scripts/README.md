@@ -4,7 +4,7 @@ Pipeline entrypoints:
 
 - `prepare_data.py`: load, validate, clean, and feature-engineer raw data into `data/processed/`.
 - `analyze.py`: train/evaluate models and write metrics, predictions, and model artifacts.
-- `make_outputs.py`: generate final figures/tables for reporting.
+- `make_outputs.py`: generate business-facing figures/tables for reporting and presentation.
 
 Run from project root:
 
@@ -30,6 +30,21 @@ python scripts/make_outputs.py
 - `outputs/tables/test_predictions_with_probabilities.csv`
 - `outputs/figures/confusion_matrix_<model>.png`
 - `outputs/figures/feature_importance_<best_model>.png`
+
+`make_outputs.py` outputs:
+
+- `outputs/tables/executive_kpi_summary.csv`
+- `outputs/tables/executive_model_comparison.csv`
+- `outputs/tables/executive_channel_distribution.csv`
+- `outputs/tables/executive_predicted_channel_mix.csv`
+- `outputs/tables/executive_segment_recommendations.csv`
+- `outputs/tables/executive_top_drivers.csv`
+- `outputs/tables/executive_outputs_manifest.json`
+- `outputs/figures/executive_model_comparison.png`
+- `outputs/figures/executive_channel_distribution.png`
+- `outputs/figures/executive_predicted_channel_mix.png`
+- `outputs/figures/executive_segment_online_heatmap.png`
+- `outputs/figures/executive_top_drivers.png`
 
 Optional input override:
 
