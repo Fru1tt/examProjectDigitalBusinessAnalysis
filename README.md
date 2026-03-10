@@ -52,6 +52,20 @@ pip install -r requirements.txt
 4. Keep exploratory analysis in `notebooks/` and move finalized logic into `scripts/`.
 5. Use [`docs/04_report_outline.md`](docs/04_report_outline.md) to structure final delivery.
 
+## Dashboard
+
+Run the decision-support dashboard:
+
+```bash
+streamlit run app.py
+```
+
+Dashboard data dependencies:
+
+1. `python scripts/prepare_data.py`
+2. `python scripts/analyze.py`
+3. `python scripts/make_outputs.py`
+
 ## Team Conventions
 
 - Use branch names like `feature/<short-topic>` or `analysis/<topic>`.

@@ -38,6 +38,11 @@ The format is based on Keep a Changelog and semantic-style sections.
   - model comparison and channel mix charts
   - segment recommendation table
   - top-driver chart and export manifest
+- Added Streamlit dashboard (`app.py`) with:
+  - structured customer input form
+  - color-coded category prediction view
+  - tuned hybrid-threshold decision logic
+  - professional executive-style layout and KPI panels
 - Added simple-language report draft for findings and interpretation:
   - `docs/05_results_discussion_draft.md`
 - Added generated processed outputs:

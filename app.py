@@ -1,0 +1,696 @@
+"""Professional dashboard for channel-preference decision support."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+PROCESSED_PATH = PROJECT_ROOT / "data" / "processed" / "shopping_behavior_clean.csv"
+SUMMARY_PATH = PROJECT_ROOT / "outputs" / "tables" / "modeling_summary.json"
+METRICS_PATH = PROJECT_ROOT / "outputs" / "tables" / "model_metrics.csv"
+TOP_DRIVERS_PATH = PROJECT_ROOT / "outputs" / "tables" / "executive_top_drivers.csv"
+TARGET_COLUMN = "shopping_preference"
+
+CATEGORY_COLORS = {
+    "online": "#0B8F8C",
+    "store": "#2563EB",
+    "hybrid": "#D97706",
+}
+
+BASE_INPUT_FEATURES = [
+    "age",
+    "monthly_income",
+    "daily_internet_hours",
+    "smartphone_usage_years",
+    "social_media_hours",
+    "online_payment_trust_score",
+    "tech_savvy_score",
+    "monthly_online_orders",
+    "monthly_store_visits",
+    "avg_online_spend",
+    "avg_store_spend",
+    "discount_sensitivity",
+    "return_frequency",
+    "avg_delivery_days",
+    "delivery_fee_sensitivity",
+    "free_return_importance",
+    "product_availability_online",
+    "impulse_buying_score",
+    "need_touch_feel_score",
+    "brand_loyalty_score",
+    "environmental_awareness",
+    "time_pressure_level",
+    "gender",
+    "city_tier",
+]
+
+ENGINEERED_FEATURES = [
+    "total_monthly_orders",
+    "online_order_share",
+    "total_avg_spend",
+    "online_spend_share",
+    "digital_engagement_score",
+]
+
+
+def inject_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+        html, body, [class*="css"] {
+            font-family: 'Manrope', 'Avenir Next', 'Segoe UI', sans-serif;
+        }
+        .stApp {
+            background:
+              radial-gradient(circle at 90% 0%, #e0f2fe 0%, transparent 30%),
+              radial-gradient(circle at 0% 100%, #dcfce7 0%, transparent 30%),
+              #f8fafc;
+        }
+        .hero {
+            background: linear-gradient(120deg, #0f172a, #1e293b);
+            border-radius: 14px;
+            padding: 20px 24px;
+            color: #f8fafc;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22);
+            margin-bottom: 14px;
+        }
+        .hero h1 {
+            margin: 0;
+            font-size: 1.65rem;
+            font-weight: 800;
+            letter-spacing: 0.2px;
+        }
+        .hero p {
+            margin: 8px 0 0 0;
+            color: #cbd5e1;
+            font-size: 0.95rem;
+        }
+        .metric-card {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 14px 16px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+            min-height: 118px;
+        }
+        .metric-title {
+            color: #475569;
+            font-size: 0.78rem;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+            font-weight: 700;
+        }
+        .metric-value {
+            color: #0f172a;
+            font-size: 1.45rem;
+            font-weight: 800;
+            margin: 0;
+            line-height: 1.2;
+        }
+        .metric-note {
+            color: #64748b;
+            margin-top: 6px;
+            font-size: 0.84rem;
+        }
+        .rec-card {
+            border-radius: 12px;
+            padding: 14px 16px;
+            color: #0f172a;
+            border: 1px solid #dbeafe;
+            background: #f8fbff;
+        }
+        .legend-wrap {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+            margin-bottom: 12px;
+        }
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
+            background: #ffffff;
+            font-size: 0.84rem;
+            color: #334155;
+            font-weight: 600;
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .section-title {
+            font-weight: 800;
+            color: #0f172a;
+            margin-top: 6px;
+            margin-bottom: 8px;
+            font-size: 1.12rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+@st.cache_data
+def load_data() -> pd.DataFrame:
+    if not PROCESSED_PATH.exists():
+        raise FileNotFoundError(
+            f"Missing {PROCESSED_PATH}. Run scripts/prepare_data.py first."
+        )
+    return pd.read_csv(PROCESSED_PATH)
+
+
+@st.cache_data
+def load_model_summary() -> dict[str, object]:
+    if SUMMARY_PATH.exists():
+        return json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
+    return {}
+
+
+@st.cache_data
+def load_model_metrics() -> pd.DataFrame:
+    if METRICS_PATH.exists():
+        return pd.read_csv(METRICS_PATH)
+    return pd.DataFrame()
+
+
+@st.cache_data
+def load_top_drivers() -> pd.DataFrame:
+    if TOP_DRIVERS_PATH.exists():
+        return pd.read_csv(TOP_DRIVERS_PATH)
+    return pd.DataFrame()
+
+
+def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
+    numeric_features = X.select_dtypes(include=["number"]).columns.tolist()
+    categorical_features = X.select_dtypes(exclude=["number"]).columns.tolist()
+
+    numeric_transformer = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+    categorical_transformer = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore")),
+        ]
+    )
+    return ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, numeric_features),
+            ("cat", categorical_transformer, categorical_features),
+        ]
+    )
+
+
+@st.cache_resource
+def train_prediction_pipeline(df: pd.DataFrame) -> Pipeline:
+    X = df.drop(columns=[TARGET_COLUMN])
+    y = df[TARGET_COLUMN].astype(str)
+    pipeline = Pipeline(
+        steps=[
+            ("preprocess", build_preprocessor(X)),
+            (
+                "model",
+                LogisticRegression(
+                    max_iter=2_000,
+                    multi_class="multinomial",
+                    class_weight="balanced",
+                ),
+            ),
+        ]
+    )
+    pipeline.fit(X, y)
+    return pipeline
+
+
+def choose_hybrid_threshold(summary: dict[str, object]) -> float:
+    thresholds = summary.get("hybrid_thresholds", {})
+    if isinstance(thresholds, dict):
+        tuned = thresholds.get("logistic_regression_hybrid_tuned")
+        if isinstance(tuned, (int, float)):
+            return float(tuned)
+    return 0.76
+
+
+def default_value(df: pd.DataFrame, column: str) -> float | int | str:
+    if pd.api.types.is_numeric_dtype(df[column]):
+        return float(df[column].median())
+    mode = df[column].mode(dropna=True)
+    return str(mode.iloc[0]) if not mode.empty else str(df[column].dropna().iloc[0])
+
+
+def build_default_profile(df: pd.DataFrame) -> dict[str, object]:
+    return {col: default_value(df, col) for col in BASE_INPUT_FEATURES}
+
+
+def engineer_features(profile: dict[str, object]) -> dict[str, object]:
+    online_orders = float(profile["monthly_online_orders"])
+    store_visits = float(profile["monthly_store_visits"])
+    online_spend = float(profile["avg_online_spend"])
+    store_spend = float(profile["avg_store_spend"])
+    total_orders = online_orders + store_visits
+    total_spend = online_spend + store_spend
+
+    profile["total_monthly_orders"] = total_orders
+    profile["online_order_share"] = online_orders / total_orders if total_orders > 0 else 0.0
+    profile["total_avg_spend"] = total_spend
+    profile["online_spend_share"] = online_spend / total_spend if total_spend > 0 else 0.0
+    profile["digital_engagement_score"] = float(
+        np.mean(
+            [
+                float(profile["daily_internet_hours"]),
+                float(profile["social_media_hours"]),
+                float(profile["tech_savvy_score"]),
+                float(profile["online_payment_trust_score"]),
+            ]
+        )
+    )
+    return profile
+
+
+def format_category(value: str) -> str:
+    return value.replace("_", " ").title()
+
+
+def recommendation_text(category: str) -> str:
+    if category == "online":
+        return (
+            "Prioritize digital channels: paid social, search ads, app promotion, "
+            "and conversion-focused landing pages."
+        )
+    if category == "store":
+        return (
+            "Prioritize in-store investment: local campaigns, store experience, "
+            "inventory availability, and in-person promotions."
+        )
+    return (
+        "Prioritize omni-channel strategy: consistent pricing/promotions across channels, "
+        "click-and-collect, and cross-channel loyalty activation."
+    )
+
+
+def render_metric_card(title: str, value: str, note: str, color: str) -> None:
+    st.markdown(
+        f"""
+        <div class="metric-card" style="border-top: 4px solid {color};">
+          <div class="metric-title">{title}</div>
+          <p class="metric-value">{value}</p>
+          <div class="metric-note">{note}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_legend() -> None:
+    legend = "".join(
+        [
+            (
+                f"<span class='legend-item'><span class='legend-dot' "
+                f"style='background:{CATEGORY_COLORS[key]};'></span>{format_category(key)}</span>"
+            )
+            for key in ["online", "store", "hybrid"]
+        ]
+    )
+    st.markdown(f"<div class='legend-wrap'>{legend}</div>", unsafe_allow_html=True)
+
+
+def build_profile_input(df: pd.DataFrame) -> dict[str, object]:
+    defaults = build_default_profile(df)
+    if "profile" not in st.session_state:
+        st.session_state["profile"] = defaults.copy()
+
+    profile = st.session_state["profile"]
+    with st.sidebar:
+        st.markdown("## Customer Profile Input")
+        st.caption("Enter one customer profile to predict the preferred shopping channel.")
+
+        with st.form("profile_form", clear_on_submit=False):
+            st.markdown("### Demographics")
+            age = st.slider("Age", 18, 79, int(profile.get("age", defaults["age"])))
+            monthly_income = st.slider(
+                "Monthly income",
+                int(df["monthly_income"].min()),
+                int(df["monthly_income"].max()),
+                int(profile.get("monthly_income", defaults["monthly_income"])),
+                step=500,
+            )
+            gender = st.selectbox(
+                "Gender",
+                ["male", "female", "other"],
+                index=["male", "female", "other"].index(
+                    str(profile.get("gender", defaults["gender"]))
+                ),
+            )
+            city_tier = st.selectbox(
+                "City tier",
+                ["tier_1", "tier_2", "tier_3"],
+                index=["tier_1", "tier_2", "tier_3"].index(
+                    str(profile.get("city_tier", defaults["city_tier"]))
+                ),
+            )
+
+            st.markdown("### Digital Behavior")
+            daily_internet_hours = st.slider(
+                "Daily internet hours", 1.0, 12.0, float(profile.get("daily_internet_hours", 6.0)), 0.1
+            )
+            smartphone_usage_years = st.slider(
+                "Smartphone usage years", 1, 14, int(profile.get("smartphone_usage_years", 8))
+            )
+            social_media_hours = st.slider(
+                "Social media hours", 0.0, 6.0, float(profile.get("social_media_hours", 2.5)), 0.1
+            )
+            online_payment_trust_score = st.slider(
+                "Online payment trust score (1-10)",
+                1,
+                10,
+                int(profile.get("online_payment_trust_score", 6)),
+            )
+            tech_savvy_score = st.slider(
+                "Tech savvy score (1-10)",
+                1,
+                10,
+                int(profile.get("tech_savvy_score", 6)),
+            )
+
+            st.markdown("### Shopping Behavior")
+            monthly_online_orders = st.slider(
+                "Monthly online orders",
+                0,
+                49,
+                int(profile.get("monthly_online_orders", 8)),
+            )
+            monthly_store_visits = st.slider(
+                "Monthly store visits",
+                0,
+                19,
+                int(profile.get("monthly_store_visits", 7)),
+            )
+            avg_online_spend = st.slider(
+                "Avg online spend",
+                int(df["avg_online_spend"].min()),
+                int(df["avg_online_spend"].max()),
+                int(profile.get("avg_online_spend", defaults["avg_online_spend"])),
+                step=500,
+            )
+            avg_store_spend = st.slider(
+                "Avg store spend",
+                int(df["avg_store_spend"].min()),
+                int(df["avg_store_spend"].max()),
+                int(profile.get("avg_store_spend", defaults["avg_store_spend"])),
+                step=500,
+            )
+            return_frequency = st.slider(
+                "Return frequency",
+                0,
+                9,
+                int(profile.get("return_frequency", 3)),
+            )
+            avg_delivery_days = st.slider(
+                "Average delivery days",
+                1,
+                7,
+                int(profile.get("avg_delivery_days", 3)),
+            )
+
+            st.markdown("### Preference and Attitude Scores")
+            discount_sensitivity = st.slider(
+                "Discount sensitivity (1-10)",
+                1,
+                10,
+                int(profile.get("discount_sensitivity", 5)),
+            )
+            delivery_fee_sensitivity = st.slider(
+                "Delivery fee sensitivity (1-10)",
+                1,
+                10,
+                int(profile.get("delivery_fee_sensitivity", 5)),
+            )
+            free_return_importance = st.slider(
+                "Free return importance (1-10)",
+                1,
+                10,
+                int(profile.get("free_return_importance", 5)),
+            )
+            product_availability_online = st.slider(
+                "Product availability online (1-10)",
+                1,
+                10,
+                int(profile.get("product_availability_online", 5)),
+            )
+            impulse_buying_score = st.slider(
+                "Impulse buying score (1-10)",
+                1,
+                10,
+                int(profile.get("impulse_buying_score", 5)),
+            )
+            need_touch_feel_score = st.slider(
+                "Need touch and feel score (1-10)",
+                1,
+                10,
+                int(profile.get("need_touch_feel_score", 5)),
+            )
+            brand_loyalty_score = st.slider(
+                "Brand loyalty score (1-10)",
+                1,
+                10,
+                int(profile.get("brand_loyalty_score", 5)),
+            )
+            environmental_awareness = st.slider(
+                "Environmental awareness (1-10)",
+                1,
+                10,
+                int(profile.get("environmental_awareness", 5)),
+            )
+            time_pressure_level = st.slider(
+                "Time pressure level (1-10)",
+                1,
+                10,
+                int(profile.get("time_pressure_level", 5)),
+            )
+
+            submitted = st.form_submit_button("Update Prediction")
+
+        if submitted:
+            st.session_state["profile"] = {
+                "age": age,
+                "monthly_income": monthly_income,
+                "daily_internet_hours": daily_internet_hours,
+                "smartphone_usage_years": smartphone_usage_years,
+                "social_media_hours": social_media_hours,
+                "online_payment_trust_score": online_payment_trust_score,
+                "tech_savvy_score": tech_savvy_score,
+                "monthly_online_orders": monthly_online_orders,
+                "monthly_store_visits": monthly_store_visits,
+                "avg_online_spend": avg_online_spend,
+                "avg_store_spend": avg_store_spend,
+                "discount_sensitivity": discount_sensitivity,
+                "return_frequency": return_frequency,
+                "avg_delivery_days": avg_delivery_days,
+                "delivery_fee_sensitivity": delivery_fee_sensitivity,
+                "free_return_importance": free_return_importance,
+                "product_availability_online": product_availability_online,
+                "impulse_buying_score": impulse_buying_score,
+                "need_touch_feel_score": need_touch_feel_score,
+                "brand_loyalty_score": brand_loyalty_score,
+                "environmental_awareness": environmental_awareness,
+                "time_pressure_level": time_pressure_level,
+                "gender": gender,
+                "city_tier": city_tier,
+            }
+
+    return st.session_state["profile"]
+
+
+def predict_customer(
+    *,
+    pipeline: Pipeline,
+    profile: dict[str, object],
+    threshold: float,
+) -> tuple[str, dict[str, float], float]:
+    row = engineer_features(profile.copy())
+    ordered_cols = BASE_INPUT_FEATURES + ENGINEERED_FEATURES
+    input_df = pd.DataFrame([row])[ordered_cols]
+
+    probabilities = pipeline.predict_proba(input_df)[0]
+    class_labels = pipeline.named_steps["model"].classes_
+    probability_map = {
+        label: float(probabilities[idx])
+        for idx, label in enumerate(class_labels)
+    }
+    for label in ["online", "store", "hybrid"]:
+        probability_map.setdefault(label, 0.0)
+
+    if probability_map["hybrid"] >= threshold:
+        predicted = "hybrid"
+    else:
+        predicted = "online" if probability_map["online"] >= probability_map["store"] else "store"
+
+    confidence = probability_map[predicted]
+    return predicted, probability_map, confidence
+
+
+def main() -> None:
+    st.set_page_config(
+        page_title="Channel Preference Dashboard",
+        page_icon=":bar_chart:",
+        layout="wide",
+    )
+    inject_styles()
+
+    df = load_data()
+    summary = load_model_summary()
+    metrics_df = load_model_metrics()
+    top_drivers_df = load_top_drivers()
+    pipeline = train_prediction_pipeline(df)
+    threshold = choose_hybrid_threshold(summary)
+
+    st.markdown(
+        """
+        <div class="hero">
+          <h1>Customer Channel Preference Dashboard</h1>
+          <p>Decision-support interface for predicting whether a customer is likely to prefer
+          online shopping, physical store shopping, or a hybrid channel strategy.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    render_legend()
+
+    profile = build_profile_input(df)
+    predicted, probability_map, confidence = predict_customer(
+        pipeline=pipeline,
+        profile=profile,
+        threshold=threshold,
+    )
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        render_metric_card(
+            "Predicted Preference",
+            format_category(predicted),
+            "Primary channel recommendation",
+            CATEGORY_COLORS[predicted],
+        )
+    with col_b:
+        render_metric_card(
+            "Confidence",
+            f"{confidence:.1%}",
+            "Model confidence for selected class",
+            CATEGORY_COLORS[predicted],
+        )
+    with col_c:
+        render_metric_card(
+            "Hybrid Threshold",
+            f"{threshold:.2f}",
+            "Applied for minority-class tuning",
+            "#0f172a",
+        )
+
+    left, right = st.columns([1.6, 1.1])
+    with left:
+        st.markdown("<div class='section-title'>Prediction Probability by Category</div>", unsafe_allow_html=True)
+        prob_df = pd.DataFrame(
+            {
+                "category": ["online", "store", "hybrid"],
+                "probability": [
+                    probability_map["online"],
+                    probability_map["store"],
+                    probability_map["hybrid"],
+                ],
+            }
+        )
+        fig = px.bar(
+            prob_df,
+            x="category",
+            y="probability",
+            color="category",
+            color_discrete_map=CATEGORY_COLORS,
+            text=prob_df["probability"].map(lambda x: f"{x:.1%}"),
+        )
+        fig.update_traces(textposition="outside")
+        fig.update_layout(
+            showlegend=False,
+            yaxis=dict(range=[0, 1]),
+            xaxis_title="Category",
+            yaxis_title="Probability",
+            margin=dict(l=20, r=20, t=20, b=20),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with right:
+        st.markdown("<div class='section-title'>Recommended Action</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="rec-card" style="border-left: 6px solid {CATEGORY_COLORS[predicted]};">
+              <strong>Focus: {format_category(predicted)}</strong><br><br>
+              {recommendation_text(predicted)}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("")
+        st.markdown("**Input Snapshot**")
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "Feature": ["Age", "Monthly Income", "Gender", "City Tier"],
+                    "Value": [
+                        profile["age"],
+                        profile["monthly_income"],
+                        profile["gender"],
+                        profile["city_tier"],
+                    ],
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.markdown("<div class='section-title'>Model Benchmark</div>", unsafe_allow_html=True)
+    if not metrics_df.empty:
+        benchmark = metrics_df.copy()
+        benchmark["model"] = benchmark["model"].str.replace("_", " ").str.title()
+        st.dataframe(benchmark, use_container_width=True, hide_index=True)
+    else:
+        st.info("Run scripts/analyze.py to populate benchmark metrics.")
+
+    st.markdown("<div class='section-title'>Top Global Drivers</div>", unsafe_allow_html=True)
+    if not top_drivers_df.empty:
+        st.dataframe(top_drivers_df.head(12), use_container_width=True, hide_index=True)
+    else:
+        st.info("Run scripts/make_outputs.py to populate top driver exports.")
+
+    st.caption(
+        "Note: predictions are decision-support signals and should be combined with business context."
+    )
+
+
+if __name__ == "__main__":
+    main()
