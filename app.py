@@ -166,6 +166,42 @@ def inject_styles() -> None:
             margin-bottom: 8px;
             font-size: 1.12rem;
         }
+        div[data-testid="stExpander"] {
+            border: 1px solid #bfdbfe;
+            border-radius: 12px;
+            background: #ffffff;
+            box-shadow: 0 4px 14px rgba(30, 41, 59, 0.08);
+        }
+        div[data-testid="stExpander"] details {
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        div[data-testid="stExpander"] details summary {
+            background: linear-gradient(90deg, #1e40af, #2563eb);
+            padding: 0.55rem 0.8rem;
+        }
+        div[data-testid="stExpander"] details summary p {
+            color: #ffffff !important;
+            font-weight: 700;
+            letter-spacing: 0.15px;
+        }
+        div[data-testid="stExpander"] details summary svg {
+            fill: #ffffff !important;
+        }
+        div[data-testid="stExpander"] details[open] summary {
+            border-bottom: 1px solid #bfdbfe;
+        }
+        div[data-testid="stExpander"] .stSlider label p {
+            color: #0f172a !important;
+            font-weight: 700 !important;
+        }
+        div[data-testid="stExpander"] .stSlider div[data-baseweb="slider"] + div p {
+            color: #334155 !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stExpander"] p {
+            color: #1e293b;
+        }
         </style>
         """,
         unsafe_allow_html=True,
