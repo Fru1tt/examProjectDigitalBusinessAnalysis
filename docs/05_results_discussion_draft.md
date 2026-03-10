@@ -9,11 +9,12 @@ This text is written so it can be used directly in the report, with limited tech
 The goal of the analysis was to predict each customer's preferred shopping channel:
 `online`, `store`, or `hybrid`.
 
-To do this, we tested three models:
+To do this, we tested four models:
 
 1. `dummy_most_frequent` (a simple baseline)
 2. `logistic_regression`
-3. `random_forest`
+3. `logistic_regression_hybrid_tuned` (threshold-tuned for better hybrid detection)
+4. `random_forest`
 
 The baseline model is important because it shows the minimum level of performance. If a more advanced model cannot beat this, the model is not useful in practice.
 
@@ -25,18 +26,19 @@ From [model_metrics.csv](/Users/carlgrude/examProject/outputs/tables/model_metri
 
 | Model | Accuracy | Macro F1 | Weighted F1 |
 |---|---:|---:|---:|
+| Logistic Regression (Hybrid Tuned) | 0.9818 | 0.9138 | 0.9834 |
 | Logistic Regression | 0.9614 | 0.8565 | 0.9684 |
 | Random Forest | 0.9550 | 0.6206 | 0.9396 |
 | Dummy Baseline | 0.8690 | 0.3100 | 0.8080 |
 
-Logistic Regression gave the best overall result.
+Logistic Regression with hybrid tuning gave the best overall result.
 
 ### 4.3 What these numbers mean in plain words
 
 - The model is clearly learning real patterns in customer behavior, because it performs much better than the simple baseline.
 - Accuracy is high for all non-baseline models, but accuracy alone is not enough here.
 - Most customers in the dataset belong to the `store` class. Because of this imbalance, Macro F1 is a better fairness check across all classes.
-- Logistic Regression had the best balance between performance and stability across classes.
+- The tuned Logistic Regression had the best balance between performance and stability across classes.
 
 ### 4.4 Class-level observations
 
@@ -46,7 +48,11 @@ From [model_class_metrics.csv](/Users/carlgrude/examProject/outputs/tables/model
 - `online` is also predicted well.
 - `hybrid` is the hardest class to predict, mainly because it has far fewer observations (74 cases in the test set).
 - Random Forest did not identify `hybrid` well in this first version.
-- Logistic Regression identified `hybrid` better, but with lower precision. This means some customers were predicted as `hybrid` even when they were not.
+- Default Logistic Regression identified `hybrid` well on recall, but with lower precision.
+- After threshold tuning, `hybrid` performance improved further:
+  - Hybrid F1 increased from `0.619` to `0.765`
+  - Hybrid precision increased from `0.448` to `0.642`
+  - Hybrid recall remained high (`0.946`)
 
 ### 4.5 Visual outputs
 
@@ -54,8 +60,10 @@ The following figures were generated for interpretation:
 
 - [confusion_matrix_dummy_most_frequent.png](/Users/carlgrude/examProject/outputs/figures/confusion_matrix_dummy_most_frequent.png)
 - [confusion_matrix_logistic_regression.png](/Users/carlgrude/examProject/outputs/figures/confusion_matrix_logistic_regression.png)
+- [confusion_matrix_logistic_regression_hybrid_tuned.png](/Users/carlgrude/examProject/outputs/figures/confusion_matrix_logistic_regression_hybrid_tuned.png)
 - [confusion_matrix_random_forest.png](/Users/carlgrude/examProject/outputs/figures/confusion_matrix_random_forest.png)
-- [feature_importance_logistic_regression.png](/Users/carlgrude/examProject/outputs/figures/feature_importance_logistic_regression.png)
+- [feature_importance_logistic_regression_hybrid_tuned.png](/Users/carlgrude/examProject/outputs/figures/feature_importance_logistic_regression_hybrid_tuned.png)
+- [hybrid_threshold_tuning_logistic_regression_hybrid_tuned.png](/Users/carlgrude/examProject/outputs/figures/hybrid_threshold_tuning_logistic_regression_hybrid_tuned.png)
 
 ## 5. Discussion
 
@@ -77,6 +85,7 @@ Using three model types was intentional:
 
 - the baseline checks if the project adds value at all,
 - Logistic Regression provides strong performance and is easier to explain,
+- threshold tuning improves the minority (`hybrid`) class without changing the underlying model architecture,
 - Random Forest checks if more complex, non-linear patterns improve results.
 
 This approach is both practical and academically defensible for a first project version.

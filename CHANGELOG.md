@@ -23,6 +23,7 @@ The format is based on Keep a Changelog and semantic-style sections.
 - Added modeling/evaluation pipeline in `scripts/analyze.py` with:
   - baseline model (`dummy_most_frequent`)
   - multinomial logistic regression
+  - hybrid-focused tuned logistic regression (probability-threshold tuning)
   - random forest classifier
   - stratified train/test split and class-level metrics
 - Added automated output exports for modeling:
@@ -31,6 +32,7 @@ The format is based on Keep a Changelog and semantic-style sections.
   - confusion matrices (CSV + PNG)
   - best-model prediction exports
   - best-model feature-importance export
+  - hybrid-threshold tuning table and chart
 - Added executive output pipeline in `scripts/make_outputs.py` with:
   - business KPI summary table
   - model comparison and channel mix charts

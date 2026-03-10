@@ -24,12 +24,14 @@ python scripts/make_outputs.py
 - `outputs/tables/model_metrics.csv`
 - `outputs/tables/model_class_metrics.csv`
 - `outputs/tables/modeling_summary.json`
+- `outputs/tables/hybrid_threshold_tuning_logistic_regression_hybrid_tuned.csv`
 - `outputs/tables/confusion_matrix_<model>.csv`
 - `outputs/tables/feature_importance_<best_model>.csv`
 - `outputs/tables/test_predictions_best_model.csv`
 - `outputs/tables/test_predictions_with_probabilities.csv`
 - `outputs/figures/confusion_matrix_<model>.png`
 - `outputs/figures/feature_importance_<best_model>.png`
+- `outputs/figures/hybrid_threshold_tuning_logistic_regression_hybrid_tuned.png`
 
 `make_outputs.py` outputs:
 
