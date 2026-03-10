@@ -636,6 +636,48 @@ def predict_customer(
     return predicted, probability_map, confidence, row, secondary_channel, secondary_probability
 
 
+def clamp(value: float, lower: float, upper: float) -> float:
+    return float(max(lower, min(upper, value)))
+
+
+def build_scenario_profile(
+    *,
+    base_profile: dict[str, object],
+    deltas: dict[str, float],
+    df: pd.DataFrame,
+) -> dict[str, object]:
+    profile = base_profile.copy()
+    for feature, delta in deltas.items():
+        current = float(profile[feature])
+        lower = float(df[feature].min())
+        upper = float(df[feature].max())
+        if feature in {"monthly_online_orders", "monthly_store_visits"}:
+            profile[feature] = int(round(clamp(current + delta, lower, upper)))
+        else:
+            profile[feature] = clamp(current + delta, lower, upper)
+    return profile
+
+
+def scenario_shift_summary(
+    *,
+    base_pred: str,
+    base_strategy: str,
+    scenario_pred: str,
+    scenario_strategy: str,
+) -> str:
+    if base_pred != scenario_pred:
+        return (
+            f"Preference changed from {format_category(base_pred)} to "
+            f"{format_category(scenario_pred)}."
+        )
+    if base_strategy != scenario_strategy:
+        return (
+            f"Preference stayed {format_category(base_pred)}, but strategy shifted from "
+            f"'{base_strategy}' to '{scenario_strategy}'."
+        )
+    return "No major strategy shift detected; current profile remains stable under this scenario."
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Channel Preference Dashboard",
@@ -773,6 +815,177 @@ def main() -> None:
             }
         )
         st.dataframe(snapshot_df, width="stretch", hide_index=True)
+
+    st.markdown("<div class='section-title'>Scenario Compare</div>", unsafe_allow_html=True)
+    with st.expander("Test how behavior changes shift predictions and strategy", expanded=False):
+        st.caption(
+            "Adjust key behavior variables to compare baseline vs scenario outcomes."
+        )
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            delta_internet = st.slider(
+                "Daily internet hours delta",
+                -4.0,
+                4.0,
+                0.0,
+                0.1,
+                key="sc_delta_internet",
+            )
+            delta_social = st.slider(
+                "Social media hours delta",
+                -3.0,
+                3.0,
+                0.0,
+                0.1,
+                key="sc_delta_social",
+            )
+            delta_tech = st.slider(
+                "Tech savvy score delta",
+                -4,
+                4,
+                0,
+                1,
+                key="sc_delta_tech",
+            )
+        with c2:
+            delta_online_orders = st.slider(
+                "Monthly online orders delta",
+                -20,
+                20,
+                0,
+                1,
+                key="sc_delta_online_orders",
+            )
+            delta_store_visits = st.slider(
+                "Monthly store visits delta",
+                -10,
+                10,
+                0,
+                1,
+                key="sc_delta_store_visits",
+            )
+            delta_online_spend = st.slider(
+                "Avg online spend delta",
+                -50000,
+                50000,
+                0,
+                500,
+                key="sc_delta_online_spend",
+            )
+        with c3:
+            delta_store_spend = st.slider(
+                "Avg store spend delta",
+                -50000,
+                50000,
+                0,
+                500,
+                key="sc_delta_store_spend",
+            )
+            delta_payment_trust = st.slider(
+                "Online payment trust delta",
+                -4,
+                4,
+                0,
+                1,
+                key="sc_delta_trust",
+            )
+            delta_touch = st.slider(
+                "Need touch/feel score delta",
+                -4,
+                4,
+                0,
+                1,
+                key="sc_delta_touch",
+            )
+
+        deltas = {
+            "daily_internet_hours": float(delta_internet),
+            "social_media_hours": float(delta_social),
+            "tech_savvy_score": float(delta_tech),
+            "monthly_online_orders": float(delta_online_orders),
+            "monthly_store_visits": float(delta_store_visits),
+            "avg_online_spend": float(delta_online_spend),
+            "avg_store_spend": float(delta_store_spend),
+            "online_payment_trust_score": float(delta_payment_trust),
+            "need_touch_feel_score": float(delta_touch),
+        }
+        scenario_profile = build_scenario_profile(
+            base_profile=profile,
+            deltas=deltas,
+            df=df,
+        )
+        sc_pred, sc_probs, sc_conf, sc_row, sc_secondary, sc_secondary_prob = predict_customer(
+            pipeline=pipeline,
+            profile=scenario_profile,
+            threshold=threshold,
+        )
+        sc_adaptive = build_adaptive_strategy(
+            predicted=sc_pred,
+            probability_map=sc_probs,
+            row=sc_row,
+        )
+
+        left_compare, right_compare = st.columns(2)
+        with left_compare:
+            st.markdown("**Baseline**")
+            st.markdown(
+                f"- Preference: **{format_category(predicted)}** ({confidence:.1%})\n"
+                f"- Secondary: **{format_category(secondary_channel)}** ({secondary_probability:.1%})\n"
+                f"- Strategy: **{adaptive['strategy']}**\n"
+                f"- Digital susceptibility: **{adaptive['digital_index']:.1f}/100**"
+            )
+        with right_compare:
+            st.markdown("**Scenario**")
+            st.markdown(
+                f"- Preference: **{format_category(sc_pred)}** ({sc_conf:.1%})\n"
+                f"- Secondary: **{format_category(sc_secondary)}** ({sc_secondary_prob:.1%})\n"
+                f"- Strategy: **{sc_adaptive['strategy']}**\n"
+                f"- Digital susceptibility: **{sc_adaptive['digital_index']:.1f}/100**"
+            )
+
+        compare_df = pd.DataFrame(
+            {
+                "category": ["online", "store", "hybrid"] * 2,
+                "probability": [
+                    probability_map["online"],
+                    probability_map["store"],
+                    probability_map["hybrid"],
+                    sc_probs["online"],
+                    sc_probs["store"],
+                    sc_probs["hybrid"],
+                ],
+                "profile": ["baseline"] * 3 + ["scenario"] * 3,
+            }
+        )
+        compare_fig = px.bar(
+            compare_df,
+            x="category",
+            y="probability",
+            color="profile",
+            barmode="group",
+            text=compare_df["probability"].map(lambda x: f"{x:.1%}"),
+            color_discrete_map={"baseline": "#334155", "scenario": "#0ea5e9"},
+        )
+        compare_fig.update_traces(textposition="outside")
+        compare_fig.update_layout(
+            yaxis=dict(range=[0, 1]),
+            xaxis_title="Category",
+            yaxis_title="Probability",
+            margin=dict(l=20, r=20, t=20, b=20),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(compare_fig, width="stretch")
+
+        st.info(
+            scenario_shift_summary(
+                base_pred=predicted,
+                base_strategy=adaptive["strategy"],
+                scenario_pred=sc_pred,
+                scenario_strategy=sc_adaptive["strategy"],
+            )
+        )
 
     st.markdown("<div class='section-title'>Model Benchmark</div>", unsafe_allow_html=True)
     if not metrics_df.empty:
