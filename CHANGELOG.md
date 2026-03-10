@@ -31,6 +31,8 @@ The format is based on Keep a Changelog and semantic-style sections.
   - confusion matrices (CSV + PNG)
   - best-model prediction exports
   - best-model feature-importance export
+- Added simple-language report draft for findings and interpretation:
+  - `docs/05_results_discussion_draft.md`
 - Added generated processed outputs:
   - `data/processed/shopping_behavior_clean.csv`
   - `data/processed/prepare_data_report.json`
